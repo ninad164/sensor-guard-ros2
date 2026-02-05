@@ -25,4 +25,11 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
+add_executable(cmd_vel_guard src/cmd_vel_guard.cpp)
+ament_target_dependencies(cmd_vel_guard rclcpp geometry_msgs)
+
+install(TARGETS
+  cmd_vel_guard
+  DESTINATION lib/${PROJECT_NAME})
+
 ament_package()
