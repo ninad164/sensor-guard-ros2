@@ -1,0 +1,9 @@
+# ROS 2 / colcon
+build/
+install/
+log/
+
+# Editor / OS
+.vscode/
+*.swp
+.DS_Storegit add .gitignore src/
