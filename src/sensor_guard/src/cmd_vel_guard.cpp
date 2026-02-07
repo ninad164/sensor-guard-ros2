@@ -43,21 +43,21 @@ public:
           dt = std::clamp(dt, 0.001, 0.2);
         }
         
-        RCLCPP_INFO(this->get_logger(), "dt=%.6f has_last=%d last_out=(%.3f,%.3f)",
-            dt, has_last_ ? 1 : 0, last_out_.linear.x, last_out_.angular.z);
+        // RCLCPP_INFO(this->get_logger(), "dt=%.6f has_last=%d last_out=(%.3f,%.3f)",
+        //     dt, has_last_ ? 1 : 0, last_out_.linear.x, last_out_.angular.z);
 
         geometry_msgs::msg::Twist out = *msg;
         
         out.linear.x  = clamp(deadband(out.linear.x,  db_lin_), -max_lin_, max_lin_);
         out.angular.z = clamp(deadband(out.angular.z, db_ang_), -max_ang_, max_ang_);
         
-        RCLCPP_INFO(this->get_logger(),
-          "dt=%.3f last=(%.3f,%.3f) desired=(%.3f,%.3f) max_step=(%.3f,%.3f)",
-          dt,
-          last_out_.linear.x, last_out_.angular.z,
-          out.linear.x, out.angular.z,
-          max_dlin_ * dt, max_dang_ * dt
-        );
+        // RCLCPP_INFO(this->get_logger(),
+        //   "dt=%.3f last=(%.3f,%.3f) desired=(%.3f,%.3f) max_step=(%.3f,%.3f)",
+        //   dt,
+        //   last_out_.linear.x, last_out_.angular.z,
+        //   out.linear.x, out.angular.z,
+        //   max_dlin_ * dt, max_dang_ * dt
+        // );
 
         if (has_last_) {
           const double max_step_lin = max_dlin_ * dt;
