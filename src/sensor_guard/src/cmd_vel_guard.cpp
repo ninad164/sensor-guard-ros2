@@ -1,17 +1,41 @@
+// L1: Statistical filtering - max speed, max rate limit.
+// L2: 
+
 #include <algorithm>
 #include <cmath>
 #include <memory>
-
+#include <deque>  //add remove values from both ends.
+#include <numeric>  //to find avgs, variances, etc
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 
 static double clamp(double v, double lo, double hi) { return std::min(std::max(v, lo), hi); }
 static double deadband(double v, double db) { return (std::fabs(v) < db) ? 0.0 : v; }
 
+static double mean_of(const std::deque<double>& d) {
+  if (d.empty()) return 0.0;
+  const double sum = std::accumulate(d.begin(), d.end(), 0.0);
+  return sum/static_cast<double>(d.size());
+}
+
+static double stddev_of(const std::deque<double>& d, double mean) {
+  if (d.size() < 2) return 0.0;
+  double acc = 0.0;
+  for (double x : d) {
+    const double e = x - mean;
+    acc += e * e;
+  }
+  return std::sqrt(acc / static_cast<double>(d.size()));
+}
+
 class CmdVelGuard : public rclcpp::Node {
 public:
   CmdVelGuard() : Node("cmd_vel_guard")
   {
+    window_size_ = this->declare_parameter("window_size", 10);  // window size for L2.
+    outlier_k_ = this->declare_parameter("outlier_k", 2.5);
+    min_sigma_ = this->declare_parameter("min_sigma", 1e-3);
+
     max_lin_ = this->declare_parameter("max_linear", 0.5);    // basic params.
     max_ang_ = this->declare_parameter("max_angular", 1.0);
     db_lin_  = this->declare_parameter("deadband_linear", 0.02);
@@ -59,6 +83,27 @@ public:
         //   max_dlin_ * dt, max_dang_ * dt
         // );
 
+        lin_hist_.push_back(out.linear.x);
+        ang_hist_.push_back(out.angular.z);
+        if((int)lin_hist_.size()>window_size_) lin_hist_.pop_front();
+        if((int)ang_hist_.size()>window_size_) ang_hist_.pop_front();
+
+        if((int)lin_hist_.size()>=5) {
+          const double m = mean_of(lin_hist_);
+          const double s = std::max(stddev_of(lin_hist_,m),min_sigma_);
+          if(std::fabs(out.linear.x-m)>outlier_k_*s){
+            out.linear.x = m;
+          }
+        }
+
+        if ((int)ang_hist_.size()>=5) {
+          const double m = mean_of(ang_hist_);
+          const double s = std::max(stddev_of(ang_hist_, m), min_sigma_);
+          if (std::fabs(out.angular.z - m) > outlier_k_ * s) {
+            out.angular.z = m;
+          }  
+        }
+        
         if (has_last_) {
           const double max_step_lin = max_dlin_ * dt;
           const double max_step_ang = max_dang_ * dt;
@@ -96,6 +141,13 @@ private:
   rclcpp::Time last_time_;
   geometry_msgs::msg::Twist last_out_;
   bool has_last_{false};
+
+  // Level 2: rate limiter
+  int window_size_{10};
+  std::deque<double> lin_hist_;
+  std::deque<double> ang_hist_;
+  double outlier_k_{2.5};
+  double min_sigma_{1e-3};
 
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_;
