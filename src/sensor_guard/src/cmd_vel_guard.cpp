@@ -74,10 +74,12 @@ public:
     last_input_time_ = this->now();
 
     // L3 publisher:
-    
     safety_pub_ = this->create_publisher<std_msgs::msg::String>(
       "/safety_state", 10
     );
+    
+    degraded_window_ = this->declare_parameter("degraded_window", 50);
+    degraded_threshold_ = this->declare_parameter("degraded_threshold", 0.3);
 
     // Create publisher
     pub_ = this->create_publisher<geometry_msgs::msg::Twist>(out_topic_, 10);
@@ -99,6 +101,7 @@ public:
         
         out.linear.x  = clamp(deadband(out.linear.x,  db_lin_), -max_lin_, max_lin_);
         out.angular.z = clamp(deadband(out.angular.z, db_ang_), -max_ang_, max_ang_);
+        bool corrected = false;
         
         lin_hist_.push_back(out.linear.x);
         ang_hist_.push_back(out.angular.z);
@@ -108,21 +111,26 @@ public:
         if((int)lin_hist_.size()>=5) {
           const double m = mean_of(lin_hist_);
           const double s = std::max(stddev_of(lin_hist_,m),min_sigma_);
-          if(std::fabs(out.linear.x-m)>outlier_k_*s){
+          if(std::fabs(out.linear.x - m)>outlier_k_*s){
             out.linear.x = m;
+            corrected = true;
           }
         }
 
-        if ((int)ang_hist_.size()>=5) {
+        if ((int)ang_hist_.size()>=5) {         // outlier rejection
           const double m = mean_of(ang_hist_);
           const double s = std::max(stddev_of(ang_hist_, m), min_sigma_);
           if (std::fabs(out.angular.z - m) > outlier_k_ * s) {
             out.angular.z = m;
+            corrected = true;
           }  
         }
+        
+        const double desired_lin = out.linear.x;
+        const double desired_ang = out.angular.z;
 
-        if (has_last_) {
-          const double max_step_lin = max_dlin_ * dt;
+        if (has_last_) {                          // rate-limiter
+          const double max_step_lin = max_dlin_ * dt;     
           const double max_step_ang = max_dang_ * dt;
 
           out.linear.x = clamp(
@@ -137,6 +145,21 @@ public:
             last_out_.angular.z + max_step_ang
           );
         }
+        
+        if (std::fabs(out.linear.x - desired_lin) > 1e-9) corrected = true;
+        if (std::fabs(out.angular.z - desired_ang) > 1e-9) corrected = true;
+
+        // Update correction history (for DEGRADED detection)
+        corrected_hist_.push_back(corrected ? 1 : 0);
+        if ((int)corrected_hist_.size() > degraded_window_) corrected_hist_.pop_front();
+
+        double ratio = 0.0;
+        if (!corrected_hist_.empty()) {
+          const int sum = std::accumulate(corrected_hist_.begin(), corrected_hist_.end(), 0);
+          ratio = static_cast<double>(sum) / static_cast<double>(corrected_hist_.size());
+        }
+
+        quality_state_ = (ratio > degraded_threshold_) ? SafetyState::DEGRADED : SafetyState::NORMAL;
 
         pub_->publish(out);
 
@@ -151,7 +174,8 @@ public:
         const auto now_t = this->now();
         const double since = (now_t - last_input_time_).seconds();
 
-        SafetyState new_state = (since > timeout_sec_) ? SafetyState::FAULT : SafetyState::NORMAL;
+        SafetyState new_state =
+          (since > timeout_sec_) ? SafetyState::FAULT : quality_state_;
 
         if (new_state != safety_state_) {
           safety_state_ = new_state;
@@ -202,6 +226,12 @@ private:
   double timeout_sec_{0.5};          // how long without input before FAULT
   rclcpp::Time last_input_time_;
   rclcpp::TimerBase::SharedPtr watchdog_timer_;
+
+  // L3.5: DEGRADED
+  int degraded_window_{50};                 // how many recent messages to evaluate
+  double degraded_threshold_{0.3};          // fraction corrected -> DEGRADED (e.g., 0.3 = 30%)
+  std::deque<int> corrected_hist_;          // 1 if corrected, 0 otherwise
+  SafetyState quality_state_{SafetyState::NORMAL};  // NORMAL/DEGRADED (watchdog can override to FAULT)
 };
 
 int main(int argc, char ** argv)
