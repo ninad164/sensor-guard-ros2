@@ -12,6 +12,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -26,7 +27,7 @@ if(BUILD_TESTING)
 endif()
 
 add_executable(cmd_vel_guard src/cmd_vel_guard.cpp)
-ament_target_dependencies(cmd_vel_guard rclcpp geometry_msgs)
+ament_target_dependencies(cmd_vel_guard rclcpp geometry_msgs std_msgs std_srvs)
 
 install(TARGETS
   cmd_vel_guard

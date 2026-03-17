@@ -8,6 +8,7 @@
 #include <memory>
 #include <deque>  //add remove values from both ends.
 #include <numeric>  //to find avgs, variances, etc
+#include "std_srvs/srv/trigger.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include <std_msgs/msg/string.hpp>
@@ -77,7 +78,11 @@ public:
     safety_pub_ = this->create_publisher<std_msgs::msg::String>(
       "/safety_state", 10
     );
-    
+      
+    std_msgs::msg::String init_msg;
+    init_msg.data = std::string(to_string(safety_state_)) + " reason=" + fault_reason_;
+    safety_pub_->publish(init_msg);
+
     degraded_window_ = this->declare_parameter("degraded_window", 50);
     degraded_threshold_ = this->declare_parameter("degraded_threshold", 0.3);
 
@@ -89,6 +94,16 @@ public:
       [this](const geometry_msgs::msg::Twist::SharedPtr msg) {
         last_input_time_ = this->now();
         const auto now_t = this->now();
+        
+        if (fault_latched_ || safety_state_ == SafetyState::FAULT) {
+          geometry_msgs::msg::Twist stop;
+          stop.linear.x = 0.0;
+          stop.angular.z = 0.0;
+          pub_->publish(stop);   
+          last_out_ = stop;      
+          last_time_ = now_t;
+          return;                
+        }
         double dt=0.0;
         
         if (has_last_) {
@@ -174,13 +189,17 @@ public:
         const auto now_t = this->now();
         const double since = (now_t - last_input_time_).seconds();
 
-        SafetyState new_state =
-          (since > timeout_sec_) ? SafetyState::FAULT : quality_state_;
+        if (since > timeout_sec_ && !fault_latched_) {
+          fault_latched_ = true;
+          fault_reason_ = "TIMEOUT_NO_INPUT";
+        }
+
+        SafetyState new_state = fault_latched_ ? SafetyState::FAULT : quality_state_;
 
         if (new_state != safety_state_) {
           safety_state_ = new_state;
           std_msgs::msg::String msg;
-          msg.data = to_string(safety_state_);
+          msg.data = std::string(to_string(safety_state_)) + " reason=" + fault_reason_;
           safety_pub_->publish(msg);
         }
 
@@ -191,7 +210,39 @@ public:
           stop.angular.z = 0.0;
           pub_->publish(stop);
           last_out_ = stop;  // keep state consistent
+          last_time_ = now_t;
         }
+      }
+      );
+    
+      reset_srv_ = this->create_service<std_srvs::srv::Trigger>(
+      "/sensor_guard/reset_fault",
+      [this](
+        const std::shared_ptr<std_srvs::srv::Trigger::Request> /*req*/,
+        std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
+
+        fault_latched_ = false;
+        fault_reason_ = "NONE";
+
+        safety_state_ = SafetyState::NORMAL;
+        quality_state_ = SafetyState::NORMAL;
+
+        lin_hist_.clear();
+        ang_hist_.clear();
+        corrected_hist_.clear();
+
+        last_out_.linear.x = 0.0;
+        last_out_.angular.z = 0.0;
+        last_time_ = this->now();
+        last_input_time_ = this->now();
+
+        // Publish updated state immediately
+        std_msgs::msg::String msg;
+        msg.data = std::string(to_string(safety_state_)) + " reason=" + fault_reason_;
+        safety_pub_->publish(msg);
+
+        res->success = true;
+        res->message = "Fault latch cleared and histories reset";
       }
     );
 
@@ -209,7 +260,7 @@ private:
   geometry_msgs::msg::Twist last_out_;
   bool has_last_{false};
 
-  // Level 2: rate limiter
+  // L2: rate-limiter
   int window_size_{10};
   std::deque<double> lin_hist_;
   std::deque<double> ang_hist_;
@@ -232,6 +283,11 @@ private:
   double degraded_threshold_{0.3};          // fraction corrected -> DEGRADED (e.g., 0.3 = 30%)
   std::deque<int> corrected_hist_;          // 1 if corrected, 0 otherwise
   SafetyState quality_state_{SafetyState::NORMAL};  // NORMAL/DEGRADED (watchdog can override to FAULT)
+
+  // L4: latched fault + reset service
+  bool fault_latched_{false};
+  std::string fault_reason_{"NONE"};
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_srv_;
 };
 
 int main(int argc, char ** argv)
