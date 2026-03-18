@@ -1,4 +1,4 @@
-# 🛡️ensor Guard (ROS 2)
+# 🛡️Sensor Guard (ROS 2)
 
 A real-time safety layer for robotic velocity commands, designed to handle noisy inputs, unstable control signals, and system-level failures.
 
@@ -71,7 +71,7 @@ ros2 topic echo /safety_state
 
 ---
 
-## ault Injection
+## Fault Injection
 
 Stop publishing `/cmd_vel_raw`
 
