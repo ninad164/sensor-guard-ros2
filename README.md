@@ -1,4 +1,4 @@
-# 🛡️ Sensor Guard (ROS 2)
+# 🛡️ensor Guard (ROS 2)
 
 A real-time safety layer for robotic velocity commands, designed to handle noisy inputs, unstable control signals, and system-level failures.
 
@@ -15,7 +15,7 @@ Built in ROS 2, this node enforces safe motion constraints, anomaly detection, a
 
 ---
 
-## ⚙️ Core Capabilities
+## Core Capabilities
 
 ### 🧮 1. Signal Conditioning
 - Deadband filtering to suppress noise
@@ -48,7 +48,7 @@ ros2 service call /sensor_guard/reset_fault std_srvs/srv/Trigger {}
 
 ---
 
-## 🧪 How to Run
+## How to Run
 
 ```bash
 colcon build --symlink-install
@@ -71,7 +71,7 @@ ros2 topic echo /safety_state
 
 ---
 
-## ⚠️ Fault Injection
+## ault Injection
 
 Stop publishing `/cmd_vel_raw`
 
@@ -86,32 +86,7 @@ ros2 service call /sensor_guard/reset_fault std_srvs/srv/Trigger {}
 
 ---
 
-## 🧠 Engineering Concepts Demonstrated
-
-- Real-time control safety pipelines  
-- Statistical anomaly detection in streaming data  
-- Rate limiting and bounded control  
-- Fault detection and recovery systems  
-- ROS 2 architecture (pub/sub, timers, services)  
-- State machine design for safety-critical robotics  
-
----
-
-## 🎯 Why This Matters
-
-In real-world robotics systems:
-- Sensors are noisy  
-- Commands are unstable  
-- Communication can fail  
-
-This project demonstrates how to build a robust middleware safety layer that:
-- Stabilizes control signals  
-- Detects system failures  
-- Prevents unsafe robot behavior  
-
----
-
-## 🔮 Future Extensions
+## Future Extensions
 
 - ROS 2 diagnostics integration (`diagnostic_msgs`)  
 - Visualization dashboards (Foxglove / rqt)  
